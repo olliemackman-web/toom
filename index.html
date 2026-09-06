@@ -2,7 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0f110d">
 <title>Checkpoint</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -33,10 +37,13 @@
     font-family:'Oswald',"Arial Narrow",sans-serif;
     overflow:hidden;
     -webkit-tap-highlight-color:transparent;
+    -webkit-touch-callout:none;
     user-select:none;
     -webkit-user-select:none;
+    touch-action:none;
+    overscroll-behavior:none;
   }
-  #app{position:fixed;inset:0;overflow:hidden;}
+  #app{position:fixed;inset:0;overflow:hidden;touch-action:none;}
   #canvas-wrap{position:absolute;inset:0;}
   #canvas-wrap canvas{display:block;width:100%;height:100%;}
 
@@ -133,6 +140,32 @@
     box-shadow:0 3px 10px rgba(0,0,0,.5);
   }
 
+  .reload-btn{
+    display:none;
+    position:absolute; right:38px; bottom:calc(max(22px, env(safe-area-inset-bottom)) + 134px);
+    width:64px; height:64px; border-radius:50%;
+    background:rgba(37,42,53,.55); border:2px solid rgba(167,173,150,.4);
+    color:var(--paper); font-family:'Oswald',sans-serif; font-size:10px; font-weight:600; letter-spacing:.12em;
+    text-transform:uppercase; cursor:pointer; touch-action:none; padding:0;
+  }
+  .reload-btn:active{background:rgba(211,138,31,.35); border-color:var(--amber-bright);}
+  .reload-btn.hot{border-color:var(--amber-bright); color:var(--amber-bright); box-shadow:0 0 0 4px rgba(211,138,31,.18);}
+  @media (pointer:coarse){ .reload-btn{display:block;} }
+
+  /* touch layout: keep the status plate clear of the left joystick */
+  @media (pointer:coarse){
+    .plate-status{ left:14px; right:14px; bottom:auto; top:76px; width:auto; padding:10px 14px 9px; }
+    .plate-wave{ min-width:0; padding:8px 14px 7px; }
+    .plate-score{ min-width:0; padding:8px 14px 7px; }
+    .value{ font-size:19px; }
+    #hud-remaining{ font-size:10px; }
+    .healthbar-track{ height:10px; margin-bottom:6px; }
+    .status-row .value{ font-size:15px; }
+  }
+  @media (pointer:coarse) and (orientation:landscape){
+    .plate-status{ top:14px; left:50%; right:auto; transform:translateX(-50%); width:200px; }
+  }
+
   #desktop-hint{
     display:none; position:absolute; bottom:16px; left:50%; transform:translateX(-50%);
     font-size:11px; letter-spacing:.1em; color:var(--khaki-dim); text-align:center; white-space:nowrap;
@@ -143,12 +176,21 @@
   .screen{
     position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
     background:radial-gradient(ellipse at 50% 35%, rgba(15,17,13,.35), rgba(6,7,5,.82) 78%);
-    padding:20px;
+    padding:20px; overflow-y:auto; -webkit-overflow-scrolling:touch; touch-action:pan-y;
   }
   .screen.hidden{display:none;}
 
   .title-plate{
-    width:min(440px, 100%); padding:28px 26px 26px; text-align:center;
+    width:min(440px, 100%); padding:28px 26px 26px; text-align:center; margin:auto; flex-shrink:0;
+  }
+  @media (max-height:520px){
+    .title-plate{ padding:18px 20px 18px; }
+    .title-plate h1{ font-size:clamp(30px,8vw,40px); margin:4px 0 10px; }
+    .brief{ font-size:13px; margin-bottom:10px; }
+    .controls-brief{ margin-bottom:10px; line-height:1.5; }
+    .best-row{ margin-bottom:12px; }
+    .stripe{ margin-bottom:10px; }
+    .stats-grid{ margin-bottom:12px; }
   }
   .eyebrow{
     font-size:12px; letter-spacing:.22em; color:var(--amber-bright); text-transform:uppercase; font-weight:600;
@@ -245,6 +287,7 @@
 
   <div class="joystick left" id="joystick-move"><div class="knob"></div></div>
   <div class="joystick right" id="joystick-aim"><div class="knob"></div></div>
+  <button class="reload-btn" id="reload-btn" type="button">Reload</button>
   <div id="desktop-hint">WASD MOVE&nbsp;&nbsp;&middot;&nbsp;&nbsp;MOUSE AIM&nbsp;&nbsp;&middot;&nbsp;&nbsp;CLICK FIRE&nbsp;&nbsp;&middot;&nbsp;&nbsp;R RELOAD</div>
 
   <div class="screen" id="title-screen">
@@ -2396,7 +2439,7 @@
   var IS_COARSE = window.matchMedia && window.matchMedia('(pointer:coarse)').matches;
 
   document.getElementById('controls-brief').textContent = IS_COARSE
-    ? 'Left stick — move   ·   Right stick — aim & fire   ·   Tap ammo to reload'
+    ? 'Left stick — move   ·   Right stick — aim & fire   ·   Reload button above the right stick'
     : 'WASD — move   ·   Mouse — aim   ·   Click — fire   ·   R — reload';
   if (!IS_COARSE) document.getElementById('desktop-hint').classList.add('active');
 
@@ -2407,31 +2450,47 @@
   var ENEMY_BASE_HP = 26, ENEMY_HP_PER_WAVE = 5, ENEMY_BASE_SPEED = 2.35, ENEMY_SPEED_PER_WAVE = 0.055, ENEMY_MAX_SPEED = 4.1;
   var CONTACT_RANGE = 1.08, CONTACT_DAMAGE = 9, CONTACT_COOLDOWN = 0.85;
   var WAVE_BASE_COUNT = 5, WAVE_COUNT_STEP = 2, SPAWN_STAGGER = 0.32, WAVE_REST = 2.6;
+  var AIM_ASSIST = IS_COARSE ? 0.24 : 0; // radians of snap for thumb-stick aiming
 
   /* ================= renderer / scene ================= */
   var wrap = document.getElementById('canvas-wrap');
-  var renderer = new THREE.WebGLRenderer({antialias:true});
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.75));
+  var renderer = new THREE.WebGLRenderer({antialias:true, powerPreference:'high-performance'});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, IS_COARSE ? 1.5 : 1.75));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = IS_COARSE ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
   renderer.outputEncoding = THREE.sRGBEncoding;
   wrap.appendChild(renderer.domElement);
+
+  // keep the page pinned while playing: no scroll, no pinch zoom, no long-press menu
+  document.addEventListener('touchmove', function(e){ if (!e.target.closest('.screen')) e.preventDefault(); }, {passive:false});
+  document.addEventListener('gesturestart', function(e){ e.preventDefault(); }, {passive:false});
+  document.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+  document.addEventListener('dblclick', function(e){ e.preventDefault(); });
 
   var scene = new THREE.Scene();
   scene.background = new THREE.Color(0x0b0d0a);
   scene.fog = new THREE.FogExp2(0x0a0c09, 0.028);
 
   var camera = new THREE.PerspectiveCamera(42, window.innerWidth/window.innerHeight, 0.1, 220);
-  var CAM_OFFSET = new THREE.Vector3(0, 18.5, 14.5);
+  var CAM_BASE = new THREE.Vector3(0, 18.5, 14.5);
+  var CAM_OFFSET = CAM_BASE.clone();
+  function fitCamera(){
+    var w = window.innerWidth, h = window.innerHeight;
+    var aspect = w/h;
+    // a narrow portrait phone sees far less of the field: pull the camera back to compensate
+    var zoomOut = aspect < 0.8 ? 1.55 : (aspect < 1.1 ? 1.3 : (aspect < 1.5 ? 1.12 : 1));
+    CAM_OFFSET.copy(CAM_BASE).multiplyScalar(zoomOut);
+    camera.aspect = aspect;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h);
+  }
+  fitCamera();
   camera.position.copy(CAM_OFFSET);
   camera.lookAt(0,0,0);
 
-  window.addEventListener('resize', function(){
-    camera.aspect = window.innerWidth/window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-  });
+  window.addEventListener('resize', fitCamera);
+  window.addEventListener('orientationchange', function(){ setTimeout(fitCamera, 250); });
 
   /* ================= lighting ================= */
   var hemi = new THREE.HemisphereLight(0x8fa3c7, 0x14130d, 0.62);
@@ -2439,7 +2498,8 @@
   var moon = new THREE.DirectionalLight(0xaebfe0, 0.72);
   moon.position.set(28, 42, -18);
   moon.castShadow = true;
-  moon.shadow.mapSize.set(1536,1536);
+  var shadowRes = IS_COARSE ? 1024 : 1536;
+  moon.shadow.mapSize.set(shadowRes, shadowRes);
   moon.shadow.camera.left = -46; moon.shadow.camera.right = 46;
   moon.shadow.camera.top = 46; moon.shadow.camera.bottom = -46;
   moon.shadow.camera.far = 110;
@@ -2652,6 +2712,19 @@
     var wp = new THREE.Vector3(); muzzle.getWorldPosition(wp);
     m.position.copy(wp);
     var dir = playerState.facing.clone();
+    // stick aiming is coarse: nudge shots onto a hostile that is nearly in the sights
+    if (AIM_ASSIST > 0){
+      var best = null, bestAng = AIM_ASSIST;
+      for (var ai=0; ai<enemies.length; ai++){
+        var ep = enemies[ai].group.position;
+        var ex = ep.x - player.position.x, ez = ep.z - player.position.z;
+        var ed = Math.sqrt(ex*ex+ez*ez);
+        if (ed < 0.5 || ed > 26) continue;
+        var ang = Math.acos(Math.max(-1, Math.min(1, (ex*dir.x + ez*dir.z)/ed)));
+        if (ang < bestAng){ bestAng = ang; best = {x:ex/ed, z:ez/ed}; }
+      }
+      if (best) dir.set(best.x, 0, best.z);
+    }
     m.lookAt(wp.clone().add(dir));
     scene.add(m);
     bullets.push({mesh:m, pos:wp.clone(), vel:dir.multiplyScalar(BULLET_SPEED), life:BULLET_LIFE});
@@ -2761,10 +2834,19 @@
 
   var mouse = {x:0,y:0,down:false};
   window.addEventListener('pointermove', function(e){ mouse.x = e.clientX; mouse.y = e.clientY; });
-  window.addEventListener('pointerdown', function(e){ if (e.target.closest('.joystick, .plate, .screen')) return; mouse.down = true; });
+  window.addEventListener('pointerdown', function(e){ if (e.target.closest('.joystick, .plate, .screen, .reload-btn')) return; mouse.down = true; });
   window.addEventListener('pointerup', function(){ mouse.down = false; });
 
   document.getElementById('ammo-plate').addEventListener('pointerdown', function(e){ e.stopPropagation(); tryReload(); });
+  document.getElementById('reload-btn').addEventListener('pointerdown', function(e){ e.stopPropagation(); e.preventDefault(); tryReload(); });
+
+  function goFullscreen(){
+    if (!IS_COARSE) return;
+    var el = document.documentElement;
+    var req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (!req) return;
+    try { var p = req.call(el); if (p && p.catch) p.catch(function(){}); } catch(e){}
+  }
 
   /* ================= game state ================= */
   var state = {
@@ -2808,7 +2890,9 @@
     fill.style.background = pct>50 ? 'var(--khaki)' : (pct>20 ? 'var(--amber)' : 'var(--alert)');
     document.getElementById('hud-ammo').textContent = playerState.ammo + '/' + playerState.maxAmmo;
     var plate = document.getElementById('ammo-plate');
-    plate.classList.toggle('show-reload', playerState.ammo===0 && !playerState.reloading);
+    var needsReload = playerState.ammo===0 && !playerState.reloading;
+    plate.classList.toggle('show-reload', needsReload);
+    document.getElementById('reload-btn').classList.toggle('hot', needsReload || (playerState.ammo <= 8 && !playerState.reloading));
   }
 
   function showBanner(title, sub){
@@ -2875,12 +2959,15 @@
 
   document.getElementById('deploy-btn').addEventListener('click', function(){
     sfx.init();
+    goFullscreen();
     document.getElementById('title-screen').classList.add('hidden');
     document.getElementById('hud').classList.remove('hidden');
     state.mode = 'playing';
     resetRun();
   });
   document.getElementById('redeploy-btn').addEventListener('click', function(){
+    sfx.init();
+    goFullscreen();
     document.getElementById('gameover-screen').classList.add('hidden');
     document.getElementById('hud').classList.remove('hidden');
     state.mode = 'playing';
