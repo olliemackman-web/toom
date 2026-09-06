@@ -2,7 +2,7 @@ name: Deploy Checkpoint to GitHub Pages
 
 on:
   push:
-    branches: [claude/game-from-drive-files-2ri0kp]
+    branches: [main]
   workflow_dispatch: {}
 
 permissions:
