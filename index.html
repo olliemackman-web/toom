@@ -242,6 +242,11 @@
     background:var(--ink); z-index:5;
   }
   #loading-screen.hidden{display:none;}
+  #fault{
+    display:none; position:absolute; left:10px; right:10px; top:10px; z-index:9;
+    background:rgba(193,67,47,.92); color:var(--paper); font-size:12px; padding:8px 10px;
+    border-radius:3px; word-break:break-word;
+  }
   #loading-screen p{
     font-size:12px; letter-spacing:.2em; color:var(--khaki-dim); text-transform:uppercase;
   }
@@ -257,6 +262,7 @@
   <div id="canvas-wrap"></div>
 
   <div id="loading-screen"><p>Establishing perimeter&hellip;</p></div>
+  <div id="fault" class="mono"></div>
 
   <div id="hud" class="hidden">
     <div class="plate plate-wave">
@@ -2433,6 +2439,13 @@
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script>
+// surface any script fault on screen so it can be reported, instead of failing silently
+window.addEventListener('error', function(ev){
+  var box = document.getElementById('fault');
+  if (!box) return;
+  box.textContent = 'Fault: ' + (ev.message || 'unknown error') + (ev.lineno ? ' (line ' + ev.lineno + ')' : '');
+  box.style.display = 'block';
+});
 (function(){
   "use strict";
   var REDUCED_MOTION = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -2463,7 +2476,10 @@
   wrap.appendChild(renderer.domElement);
 
   // keep the page pinned while playing: no scroll, no pinch zoom, no long-press menu
-  document.addEventListener('touchmove', function(e){ if (!e.target.closest('.screen')) e.preventDefault(); }, {passive:false});
+  document.addEventListener('touchmove', function(e){
+    var t = e.target;
+    if (!(t && t.closest && t.closest('.screen'))) e.preventDefault();
+  }, {passive:false});
   document.addEventListener('gesturestart', function(e){ e.preventDefault(); }, {passive:false});
   document.addEventListener('contextmenu', function(e){ e.preventDefault(); });
   document.addEventListener('dblclick', function(e){ e.preventDefault(); });
@@ -2639,12 +2655,15 @@
   var gunPivot = new THREE.Group();
   gunPivot.position.set(0.22, 1.18, 0.14);
   gunPivot.rotation.x = -0.04;
-  var ak = templates.ak.clone(true);
-  ak.rotation.y = Math.PI/2;
-  gunPivot.add(ak);
   var muzzle = new THREE.Object3D();
   muzzle.position.set(0.13, 0.04, 0);
-  ak.add(muzzle);
+  // the AK mesh is attached in init(), once the model has finished parsing
+  function attachRifle(){
+    var ak = templates.ak.clone(true);
+    ak.rotation.y = Math.PI/2;
+    ak.add(muzzle);
+    gunPivot.add(ak);
+  }
 
   player.add(legs, torso, head, helmet, gunPivot);
   player.position.set(0, 0, 7);
@@ -3190,6 +3209,7 @@
   }
 
   function init(){
+    attachRifle();
     buildCheckpoint();
     document.getElementById('loading-screen').classList.add('hidden');
     refreshBestUI();
